@@ -1,0 +1,116 @@
+name: Sync upstream (preserve local changes)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: 'How to apply changes (pr or push)'
+        required: false
+        default: 'pr'
+        type: choice
+        options:
+          - pr
+          - push
+  schedule:
+    - cron: '0 3 * * *' # daily at 03:00 UTC
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # Optional repository variables (Settings → Variables → Repository variables)
+  # Set these in your repo to control behavior without editing the workflow:
+  #   UPSTREAM_REPO: e.g. "Decohererk/DecoTV" or "katelya77/KatelyaTV"
+  #   UPSTREAM_BRANCH: e.g. "main"
+  #   TARGET_BRANCH: e.g. "main"
+  #   MERGE_PREFERENCE: "ours" (keep local on conflicts) or "theirs" (prefer upstream on conflicts)
+  UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO }}
+  UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH }}
+  TARGET_BRANCH: ${{ vars.TARGET_BRANCH }}
+  MERGE_PREFERENCE: ${{ vars.MERGE_PREFERENCE }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Prepare defaults
+        id: defaults
+        shell: bash
+        run: |
+          set -e
+          # Defaults if repository variables are not set
+          echo "UPSTREAM_REPO=${UPSTREAM_REPO:-Decohererk/DecoTV}" >> "$GITHUB_ENV"
+          echo "UPSTREAM_BRANCH=${UPSTREAM_BRANCH:-main}" >> "$GITHUB_ENV"
+          echo "TARGET_BRANCH=${TARGET_BRANCH:-main}" >> "$GITHUB_ENV"
+          echo "MERGE_PREFERENCE=${MERGE_PREFERENCE:-ours}" >> "$GITHUB_ENV"
+          # workflow_dispatch input
+          echo "RUN_MODE=${{ github.event.inputs.run_mode || 'pr' }}" >> "$GITHUB_ENV"
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote remove upstream || true
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream "${UPSTREAM_BRANCH}"
+
+      - name: Merge upstream into target (prefer local changes on conflicts)
+        id: merge
+        shell: bash
+        run: |
+          set -e
+          git checkout "${TARGET_BRANCH}"
+          # Make sure local is up to date
+          git pull --ff-only origin "${TARGET_BRANCH}" || true
+
+          # Strategy: prefer local when conflicts, so upstream updates won't override your customizations
+          STRAT="${MERGE_PREFERENCE}"
+          echo "Using merge preference: ${STRAT}"
+          git merge --no-edit -X "${STRAT}" "upstream/${UPSTREAM_BRANCH}" || true
+
+          # Detect if there are changes produced by merge
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request (review before apply)
+        if: steps.merge.outputs.changed == 'true' && env.RUN_MODE == 'pr'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(sync): merge upstream ${{ env.UPSTREAM_REPO }}@${{ env.UPSTREAM_BRANCH }} (pref=${{ env.MERGE_PREFERENCE }})'
+          branch: 'sync/upstream-${{ env.UPSTREAM_BRANCH }}'
+          title: 'Sync upstream ${{ env.UPSTREAM_REPO }} → ${{ env.TARGET_BRANCH }} (pref=${{ env.MERGE_PREFERENCE }})'
+          body: |
+            Automated upstream sync:
+            - Source: ${{ env.UPSTREAM_REPO }} @ ${{ env.UPSTREAM_BRANCH }}
+            - Target: ${{ env.TARGET_BRANCH }}
+            - Strategy: prefer "${{ env.MERGE_PREFERENCE }}" on conflicts
+
+            This PR keeps your local changes intact on conflicts (when "ours" is selected).
+            Review and merge if acceptable.
+          labels: sync, upstream
+          assignees: ${{ github.actor }}
+          signoff: true
+
+      - name: Push merge directly (no PR)
+        if: steps.merge.outputs.changed == 'true' && env.RUN_MODE == 'push'
+        run: |
+          git push origin "${TARGET_BRANCH}"
+
+      - name: No changes detected
+        if: steps.merge.outputs.changed != 'true'
+        run: echo "No upstream changes to merge."
