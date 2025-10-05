@@ -6,7 +6,7 @@ on:
       run_mode:
         description: 'How to apply changes (pr or push)'
         required: false
-        default: 'pr'
+        default: 'push'
         type: choice
         options:
           - pr
@@ -19,16 +19,12 @@ permissions:
   pull-requests: write
 
 env:
-  # Optional repository variables (Settings → Variables → Repository variables)
-  # Set these in your repo to control behavior without editing the workflow:
-  #   UPSTREAM_REPO: e.g. "Decohererk/DecoTV" or "katelya77/KatelyaTV"
-  #   UPSTREAM_BRANCH: e.g. "main"
-  #   TARGET_BRANCH: e.g. "main"
-  #   MERGE_PREFERENCE: "ours" (keep local on conflicts) or "theirs" (prefer upstream on conflicts)
-  UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO }}
-  UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH }}
-  TARGET_BRANCH: ${{ vars.TARGET_BRANCH }}
-  MERGE_PREFERENCE: ${{ vars.MERGE_PREFERENCE }}
+  # 固定上游与分支（可按需修改）
+  UPSTREAM_REPO: Decohererk/DecoTV
+  UPSTREAM_BRANCH: main
+  TARGET_BRANCH: main
+  # 冲突策略：-X ours（保留本地改动）
+  MERGE_PREFERENCE: ours
 
 jobs:
   sync:
@@ -46,13 +42,17 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Defaults if repository variables are not set
-          echo "UPSTREAM_REPO=${UPSTREAM_REPO:-Decohererk/DecoTV}" >> "$GITHUB_ENV"
-          echo "UPSTREAM_BRANCH=${UPSTREAM_BRANCH:-main}" >> "$GITHUB_ENV"
-          echo "TARGET_BRANCH=${TARGET_BRANCH:-main}" >> "$GITHUB_ENV"
-          echo "MERGE_PREFERENCE=${MERGE_PREFERENCE:-ours}" >> "$GITHUB_ENV"
-          # workflow_dispatch input
-          echo "RUN_MODE=${{ github.event.inputs.run_mode || 'pr' }}" >> "$GITHUB_ENV"
+          # 固定参数已通过 env 传入，这里仅向环境导出
+          echo "UPSTREAM_REPO=${UPSTREAM_REPO}" >> "$GITHUB_ENV"
+          echo "UPSTREAM_BRANCH=${UPSTREAM_BRANCH}" >> "$GITHUB_ENV"
+          echo "TARGET_BRANCH=${TARGET_BRANCH}" >> "$GITHUB_ENV"
+          echo "MERGE_PREFERENCE=${MERGE_PREFERENCE}" >> "$GITHUB_ENV"
+          # 事件类型：schedule 强制 push；手动触发可通过 inputs 覆盖，默认 push
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            echo "RUN_MODE=push" >> "$GITHUB_ENV"
+          else
+            echo "RUN_MODE=${{ github.event.inputs.run_mode || 'push' }}" >> "$GITHUB_ENV"
+          fi
 
       - name: Configure Git
         run: |
