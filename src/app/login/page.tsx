@@ -3,6 +3,7 @@
 'use client';
 
 import { AlertCircle, CheckCircle } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
@@ -86,14 +87,19 @@ function LoginPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [shouldAskUsername, setShouldAskUsername] = useState(false);
+  const [enableRegister, setEnableRegister] = useState(false);
 
   const { siteName } = useSite();
 
-  // 在客户端挂载后设置配置
+  /* 在客户端挂载后设置配置 */
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storageType = (window as any).RUNTIME_CONFIG?.STORAGE_TYPE;
       setShouldAskUsername(storageType && storageType !== 'localstorage');
+
+      // 读取注册开关（默认 false）
+      const enable = (window as any).RUNTIME_CONFIG?.ENABLE_REGISTER === true;
+      setEnableRegister(!!enable);
     }
   }, []);
 
@@ -184,6 +190,19 @@ function LoginPageClient() {
           >
             {loading ? '登录中...' : '登录'}
           </button>
+
+          {/* 注册入口：需用户名（数据库模式）且开关开启时显示 */}
+          {shouldAskUsername && enableRegister && (
+            <div className='mt-4 text-center text-sm text-gray-500 dark:text-gray-400'>
+              没有账号？
+              <Link
+                href='/register'
+                className='ml-1 text-purple-600 hover:underline dark:text-purple-400'
+              >
+                立即注册
+              </Link>
+            </div>
+          )}
         </form>
       </div>
 

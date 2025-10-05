@@ -84,7 +84,7 @@ export default async function RootLayout({
     fluidSearch = config.SiteConfig.FluidSearch;
   }
 
-  // 将运行时配置注入到全局 window 对象，供客户端在运行时读取
+  /** 将运行时配置注入到全局 window 对象，供客户端在运行时读取 */
   const runtimeConfig = {
     STORAGE_TYPE: process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage',
     DOUBAN_PROXY_TYPE: doubanProxyType,
@@ -94,6 +94,8 @@ export default async function RootLayout({
     DISABLE_YELLOW_FILTER: disableYellowFilter,
     CUSTOM_CATEGORIES: customCategories,
     FLUID_SEARCH: fluidSearch,
+    /** 注册开关：默认关闭 */
+    ENABLE_REGISTER: process.env.NEXT_PUBLIC_ENABLE_REGISTER === 'true',
   };
 
   return (
